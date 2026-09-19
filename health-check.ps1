@@ -8,14 +8,34 @@
 
 param(
   [int]$Port = 8899,
-  [switch]$CheckReady
+  [switch]$CheckReady,
+  [int]$LogMaxBytes = 2097152,   # 2 MB
+  [int]$LogKeep = 2
 )
 
 $taskName = "opencode-zen-gateway"
 $dir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $logFile = Join-Path $dir "health-check.log"
 
+function Rotate-Log {
+  if ($LogMaxBytes -le 0) { return }
+  if (-not (Test-Path $logFile)) { return }
+  if ((Get-Item $logFile).Length -lt $LogMaxBytes) { return }
+  try {
+    $oldest = "$logFile.$LogKeep"
+    if (Test-Path $oldest) { Remove-Item $oldest -Force -ErrorAction SilentlyContinue }
+    for ($i = $LogKeep - 1; $i -ge 1; $i--) {
+      $src = "$logFile.$i"
+      if (Test-Path $src) { Move-Item $src "$logFile.$($i + 1)" -Force -ErrorAction SilentlyContinue }
+    }
+    Move-Item $logFile "$logFile.1" -Force -ErrorAction SilentlyContinue
+  } catch {
+    # never let rotation break the check
+  }
+}
+
 function Write-Log([string]$msg) {
+  Rotate-Log
   "$([DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss')) $msg" | Add-Content $logFile
 }
 

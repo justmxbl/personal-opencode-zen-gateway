@@ -12,7 +12,32 @@ PORT="${PORT:-8899}"
 CHECK_READY="${CHECK_READY:-0}"
 SERVICE="opencode-zen-gateway"
 
-log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*"; }
+# Self-managed log with rotation (0 disables the size limit).
+DIR="$(cd "$(dirname "$0")" && pwd)"
+LOG_FILE="${LOG_FILE:-$DIR/health-check.log}"
+LOG_MAX_BYTES="${LOG_MAX_BYTES:-2097152}"   # 2 MB
+LOG_KEEP="${LOG_KEEP:-2}"
+
+rotate_log() {
+  [ "$LOG_MAX_BYTES" -le 0 ] && return 0
+  [ -f "$LOG_FILE" ] || return 0
+  size=$(wc -c < "$LOG_FILE" 2>/dev/null || echo 0)
+  [ "$size" -lt "$LOG_MAX_BYTES" ] && return 0
+  rm -f "$LOG_FILE.$LOG_KEEP"
+  i=$((LOG_KEEP - 1))
+  while [ "$i" -ge 1 ]; do
+    [ -f "$LOG_FILE.$i" ] && mv -f "$LOG_FILE.$i" "$LOG_FILE.$((i + 1))"
+    i=$((i - 1))
+  done
+  mv -f "$LOG_FILE" "$LOG_FILE.1" 2>/dev/null || true
+}
+
+log() {
+  line="$(date '+%Y-%m-%d %H:%M:%S') $*"
+  echo "$line"
+  rotate_log
+  echo "$line" >> "$LOG_FILE" 2>/dev/null || true
+}
 
 restart() {
   log "restarting $SERVICE..."

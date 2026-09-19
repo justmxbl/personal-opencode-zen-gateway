@@ -1,9 +1,12 @@
 # Runtime state
 gateway.log
+gateway.log.*
 health-check.log
+health-check.log.*
 service.log
 service.err.log
 *.log
+*.log.*
 workspace/
 
 # Secrets / local overrides

@@ -44,6 +44,8 @@ it. You get the free models without depending on any separate launcher scripts.
   reconnection, request timeouts, per-request session cleanup.
 - **Alerts**: structured log plus an optional webhook (`ALERT_WEBHOOK`) on
   backend failures, restarts and readiness failures.
+- **Log rotation**: the gateway and the health probes rotate their logs
+  automatically and delete old backups, so nothing grows without bound.
 
 ## Requirements
 
@@ -165,6 +167,9 @@ All settings are environment variables. See `.env.example`.
 | `FREE_MODELS_TTL_MS` | `300000` | Model list cache TTL |
 | `ALERT_WEBHOOK` | empty | POST JSON alerts here on failures |
 | `GATEWAY_LOG` | `./gateway.log` | Log file path |
+| `LOG_MAX_BYTES` | `5242880` | Rotate the log once it exceeds this size (`0` disables) |
+| `LOG_KEEP` | `3` | Number of rotated backups to keep (`gateway.log.1` … `.N`) |
+| `LOG_CHECK_MS` | `60000` | How often to check the log size |
 
 ## Why tools stay enabled
 

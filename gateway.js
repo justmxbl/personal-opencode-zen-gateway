@@ -46,6 +46,11 @@ const CONFIG_FILE = process.env.OPENCODE_CONFIG || path.join(ROOT, "gateway-conf
 const LOG_FILE = process.env.GATEWAY_LOG || path.join(ROOT, "gateway.log");
 const ALERT_WEBHOOK = process.env.ALERT_WEBHOOK || "";
 
+// Log rotation. Set LOG_MAX_BYTES=0 to disable.
+const LOG_MAX_BYTES = parseInt(process.env.LOG_MAX_BYTES || String(5 * 1024 * 1024), 10);
+const LOG_KEEP = parseInt(process.env.LOG_KEEP || "3", 10);
+const LOG_CHECK_MS = parseInt(process.env.LOG_CHECK_MS || "60000", 10);
+
 const MODELS_TTL_MS = parseInt(process.env.FREE_MODELS_TTL_MS || "300000", 10);
 const READY_TTL_MS = parseInt(process.env.READY_TTL_MS || "60000", 10);
 const READY_MODEL = process.env.READY_MODEL || "";
@@ -65,6 +70,43 @@ function log(level, msg, extra) {
     fs.appendFileSync(LOG_FILE, line + "\n");
   } catch {
     /* logging must never break the gateway */
+  }
+}
+
+// Rotate the log file when it grows past LOG_MAX_BYTES, keeping LOG_KEEP
+// backups (gateway.log.1 ... gateway.log.N). Older backups are deleted.
+function rotateLogIfNeeded() {
+  if (!LOG_MAX_BYTES) return;
+  let size;
+  try {
+    size = fs.statSync(LOG_FILE).size;
+  } catch {
+    return; // no log file yet
+  }
+  if (size < LOG_MAX_BYTES) return;
+  try {
+    // Drop the oldest backup.
+    try {
+      fs.unlinkSync(`${LOG_FILE}.${LOG_KEEP}`);
+    } catch {
+      /* not present */
+    }
+    // Shift the remaining backups up by one.
+    for (let i = LOG_KEEP - 1; i >= 1; i -= 1) {
+      try {
+        fs.renameSync(`${LOG_FILE}.${i}`, `${LOG_FILE}.${i + 1}`);
+      } catch {
+        /* not present */
+      }
+    }
+    // Rotate the current file.
+    fs.renameSync(LOG_FILE, `${LOG_FILE}.1`);
+    fs.appendFileSync(
+      LOG_FILE,
+      `${new Date().toISOString()} [INFO] log rotated (previous file exceeded ${LOG_MAX_BYTES} bytes)\n`,
+    );
+  } catch {
+    /* never let rotation break the gateway */
   }
 }
 
@@ -894,6 +936,11 @@ const server = http.createServer((req, res) => {
 });
 
 async function main() {
+  rotateLogIfNeeded();
+  if (LOG_MAX_BYTES) {
+    const timer = setInterval(rotateLogIfNeeded, LOG_CHECK_MS);
+    if (timer.unref) timer.unref();
+  }
   log("INFO", `gateway v${VERSION} starting`, { host: HOST, port: PORT, manage_backend: MANAGE_BACKEND });
   const ok = await ensureBackend();
   if (!ok) {
