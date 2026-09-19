@@ -1,0 +1,16 @@
+# Runtime state
+gateway.log
+health-check.log
+service.log
+service.err.log
+*.log
+workspace/
+
+# Secrets / local overrides
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

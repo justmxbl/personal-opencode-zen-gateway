@@ -1,0 +1,31 @@
+{
+  "name": "opencode-zen-gateway",
+  "version": "2.0.0",
+  "description": "Self-contained OpenAI-compatible gateway for OpenCode Zen free models, proxied through the official opencode binary.",
+  "main": "gateway.js",
+  "bin": {
+    "opencode-zen-gateway": "gateway.js"
+  },
+  "scripts": {
+    "start": "node gateway.js",
+    "health": "node -e \"fetch('http://127.0.0.1:8899/health').then(r=>r.text()).then(t=>console.log(t))\""
+  },
+  "files": [
+    "gateway.js",
+    "gateway-config.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "opencode",
+    "zen",
+    "openai",
+    "gateway",
+    "proxy",
+    "llm"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

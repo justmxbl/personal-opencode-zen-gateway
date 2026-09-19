@@ -1,0 +1,11 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "zen": {
+      "mode": "primary",
+      "description": "Chat assistant used by the Zen gateway.",
+      "prompt": "You are a helpful, general-purpose assistant. Answer the user's questions directly and concisely. You have access to file and shell tools, but only use them when the user explicitly asks you to inspect or change something on disk. For normal conversation, questions, explanations, and writing tasks, reply directly without calling tools.",
+      "tools": { "*": true }
+    }
+  }
+}

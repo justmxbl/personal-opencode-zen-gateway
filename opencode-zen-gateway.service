@@ -1,0 +1,21 @@
+[Unit]
+Description=OpenCode Zen Gateway (OpenAI-compatible proxy for Zen free models)
+Documentation=https://github.com/sums001/opencode-zen-gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__DIR__
+ExecStart=__NODE__ __DIR__/gateway.js
+Restart=always
+RestartSec=5
+# The gateway spawns `opencode serve`; kill the whole process group on stop.
+KillMode=control-group
+TimeoutStopSec=20
+# Optional: set an alert webhook or a local API key here.
+# Environment=ALERT_WEBHOOK=
+# Environment=LOCAL_API_KEY=
+
+[Install]
+WantedBy=default.target
