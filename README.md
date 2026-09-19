@@ -85,6 +85,12 @@ Windows (scheduled task, hidden, auto-restart):
 powershell -ExecutionPolicy Bypass -File .\install-service.ps1
 ```
 
+The Windows tasks are launched through `wscript.exe` (`service.vbs` and
+`health-check.vbs`). `wscript` has no console, so there is **no cmd or
+PowerShell window flash** — not at logon and not on the 5-minute health probe.
+`service.ps1` is kept as a fallback for environments where VBScript is
+disabled by policy.
+
 Linux / macOS (systemd user service, `Restart=always`):
 
 ```sh
@@ -182,6 +188,21 @@ So `gateway-config.json` defines a `zen` agent that **keeps all tools enabled**
 but instructs the model to reply directly for normal conversation. The backend
 also runs in a dedicated `workspace/` directory so any tool use is confined
 there.
+
+## Windows: running without console popups
+
+Everything runs headless:
+
+- The scheduled tasks invoke `wscript.exe`, which has no console, so no cmd or
+  PowerShell window appears (neither at logon nor on the recurring health probe).
+- The gateway spawns `opencode serve` with `windowsHide: true` and piped stdio.
+- Backend shutdown uses `taskkill` with `windowsHide: true`.
+- Gateway and probe logs are written to files, never to a visible console.
+
+One caveat: when the model calls the agent's shell tool, the backend runs the
+configured shell (`shell` in your opencode config, e.g. `pwsh`). That process is
+spawned by the opencode backend, not by this gateway. Normal chat never triggers
+it; only explicit file/shell requests do.
 
 ## Reliability model
 

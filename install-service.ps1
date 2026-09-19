@@ -19,8 +19,8 @@ $ErrorActionPreference = "Stop"
 $dir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $taskName = "opencode-zen-gateway"
 $healthTaskName = "opencode-zen-gateway-health"
-$serviceScript = Join-Path $dir "service.ps1"
-$healthScript = Join-Path $dir "health-check.ps1"
+$serviceVbs = Join-Path $dir "service.vbs"
+$healthVbs = Join-Path $dir "health-check.vbs"
 
 # Stop anything already running from a previous install.
 Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
@@ -33,9 +33,10 @@ Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction Silent
 Unregister-ScheduledTask -TaskName $healthTaskName -Confirm:$false -ErrorAction SilentlyContinue
 
 # --- main gateway task -----------------------------------------------------
+# wscript.exe has no console, so there is no cmd/powershell window flash.
 $action = New-ScheduledTaskAction `
-  -Execute "powershell.exe" `
-  -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$serviceScript`"" `
+  -Execute "wscript.exe" `
+  -Argument "//nologo `"$serviceVbs`"" `
   -WorkingDirectory $dir
 
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
@@ -53,8 +54,8 @@ Register-ScheduledTask `
 
 # --- health probe task -----------------------------------------------------
 $healthAction = New-ScheduledTaskAction `
-  -Execute "powershell.exe" `
-  -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$healthScript`" -Port $Port" `
+  -Execute "wscript.exe" `
+  -Argument "//nologo `"$healthVbs`" $Port" `
   -WorkingDirectory $dir
 
 $healthTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) `
