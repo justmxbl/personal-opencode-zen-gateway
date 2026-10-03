@@ -15,13 +15,19 @@ client = OpenAI(
 
 # 1. list the free models
 print("=== models ===")
-for model in client.models.list().data:
-    print(f"  {model.id}")
+available = [model.id for model in client.models.list().data]
+for model_id in available:
+    print(f"  {model_id}")
+
+# Zen rotates the free roster, so pick from the live list rather than hardcoding.
+# Prefer a model that is currently healthy; override with OZG_MODEL to pin one.
+healthy = next((m for m in ("nemotron-3-ultra-free", "big-pickle") if m in available), available[0])
+model = os.environ.get("OZG_MODEL") or healthy
 
 # 2. a simple completion
 print("\n=== non-streaming ===")
 response = client.chat.completions.create(
-    model="mimo-v2.5-free",
+    model=model,
     messages=[{"role": "user", "content": "Reply with exactly: hello from the gateway"}],
 )
 print(response.choices[0].message.content)
@@ -29,7 +35,7 @@ print(response.choices[0].message.content)
 # 3. streaming
 print("\n=== streaming ===")
 stream = client.chat.completions.create(
-    model="mimo-v2.5-free",
+    model=model,
     messages=[{"role": "user", "content": "Count from 1 to 5, comma separated."}],
     stream=True,
 )

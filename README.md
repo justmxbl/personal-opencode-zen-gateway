@@ -111,7 +111,7 @@ from openai import OpenAI
 client = OpenAI(base_url="http://127.0.0.1:8899/v1", api_key="x")
 
 r = client.chat.completions.create(
-    model="mimo-v2.5-free",
+    model="mimo-v2.6-flash-free",
     messages=[{"role": "user", "content": "hello"}],
 )
 print(r.choices[0].message.content)
@@ -143,15 +143,21 @@ limits come from the same source.
 
 | Model | Context | Max output | Vision |
 |---|---|---|---|
-| `mimo-v2.5-free` | 200K | 32K | ✅ |
+| `mimo-v2.6-flash-free` | 200K | 32K | ✅ |
 | `big-pickle` | 200K | 32K | text |
-| `ling-3.0-flash-fin-free` | 262K | 32K | text |
-| `nemotron-3.5-lightning-free` | 262K | 262K | text |
+| `ling-3.0-flash-fin-free` | 256K | 32K | text |
+| `ling-3.1-flash-free` | 256K | 32K | text |
+| `nemotron-3.5-lightning-free` | 256K | 256K | text |
+| `fledge-alpha-free` | 1M | 128K | text |
+| `longcat-2.5-preview-free` | 1M | 128K | text |
+| `muse-spark-1.3-contributor-free` | 1M | 128K | text |
 | `nemotron-3-ultra-free` | 1M | 128K | text |
-| `muse-spark-1.2-contributor-free` | 1M | 131K | text |
-| `muse-spark-1.3-contributor-free` | 1M | 131K | text |
+| `space-bunny-free` | 1M | 512K | text |
 
-`deepseek-v4-flash-free` appears and disappears with upstream availability.
+Zen rotates this roster without notice — `mimo-v2.5-free`, `deepseek-v4-flash-free`
+and `gemini-2.5-flash-free` were retired. Requests for an unknown model return
+`404 model_not_found` with the current list instead of hanging; call
+`GET /v1/models` for the authoritative roster.
 
 ## Configuration
 

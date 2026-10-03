@@ -56,7 +56,7 @@ const READY_TTL_MS = parseInt(process.env.READY_TTL_MS || "60000", 10);
 const READY_MODEL = process.env.READY_MODEL || "";
 
 const VISION_MODELS = new Set(
-  (process.env.VISION_MODELS || "mimo-v2.5-free").split(",").map((s) => s.trim()).filter(Boolean),
+  (process.env.VISION_MODELS || "mimo-v2.6-flash-free").split(",").map((s) => s.trim()).filter(Boolean),
 );
 
 // ---------------------------------------------------------------------------
@@ -370,8 +370,8 @@ function deleteSession(sessionId) {
 
 let modelsCache = { at: 0, data: [] };
 
-async function getFreeModels() {
-  if (Date.now() - modelsCache.at < MODELS_TTL_MS && modelsCache.data.length) {
+async function getFreeModels(force) {
+  if (!force && Date.now() - modelsCache.at < MODELS_TTL_MS && modelsCache.data.length) {
     return modelsCache.data;
   }
   const { json } = await ocRequest("GET", "/provider", null, 15000);
@@ -401,6 +401,29 @@ async function getFreeModels() {
   }
   modelsCache = { at: Date.now(), data: list };
   return list;
+}
+
+// Resolve a requested model against the live free roster. Zen swaps the roster
+// periodically; an unknown id is forwarded to the backend as-is, which accepts
+// the prompt and then hangs forever. An empty list means we could not reach the
+// backend, so we leave validation to the upstream call rather than 404.
+async function resolveModel(model) {
+  let models = [];
+  try {
+    models = await getFreeModels();
+  } catch {
+    return { found: null, models: [] };
+  }
+  let found = models.find((m) => m.id === model) || null;
+  if (!found && models.length) {
+    try {
+      models = await getFreeModels(true);
+      found = models.find((m) => m.id === model) || null;
+    } catch {
+      /* keep stale list */
+    }
+  }
+  return { found, models };
 }
 
 // ---------------------------------------------------------------------------
@@ -622,7 +645,7 @@ let readyCache = { at: 0, ok: false, model: null, latency_ms: null, error: null 
 
 async function probeUpstream() {
   const models = await getFreeModels().catch(() => []);
-  const model = READY_MODEL || (models.find((m) => m.id === "mimo-v2.5-free") || models[0] || {}).id;
+  const model = READY_MODEL || (models.find((m) => VISION_MODELS.has(m.id)) || models[0] || {}).id;
   if (!model) return { ok: false, model: null, latency_ms: null, error: "no free models available" };
   const started = Date.now();
   try {
@@ -748,6 +771,17 @@ async function handleChatCompletions(req, res) {
     return sendJSON(res, 400, { error: { message: "No content in messages", type: "invalid_request_error" } });
   }
 
+  const { found: knownModel, models: knownModels } = await resolveModel(model);
+  if (knownModels.length && !knownModel) {
+    return sendJSON(res, 404, {
+      error: {
+        message: `The model '${model}' does not exist or is no longer on the free tier. Available: ${knownModels.map((m) => m.id).join(", ")}`,
+        type: "invalid_request_error",
+        code: "model_not_found",
+      },
+    });
+  }
+
   if (!(await ensureBackend())) {
     return sendJSON(res, 503, { error: { message: "opencode backend unavailable", type: "upstream_error" } });
   }
@@ -756,34 +790,48 @@ async function handleChatCompletions(req, res) {
   const created = Math.floor(Date.now() / 1000);
 
   if (!stream) {
+    let out;
     try {
-      const out = await runCompletion({ model, parts, system });
-      const usage = out.usage || {};
-      return sendJSON(res, 200, {
-        id,
-        object: "chat.completion",
-        created,
-        model,
-        choices: [
-          {
-            index: 0,
-            message: {
-              role: "assistant",
-              content: out.content || "",
-              ...(out.reasoning ? { reasoning_content: out.reasoning } : {}),
-            },
-            finish_reason: "stop",
-          },
-        ],
-        usage: {
-          prompt_tokens: usage.input || 0,
-          completion_tokens: usage.output || 0,
-          total_tokens: (usage.input || 0) + (usage.output || 0),
-        },
-      });
+      out = await runCompletion({ model, parts, system });
+      // Some free-tier models intermittently complete with no text. One retry
+      // before declaring it an upstream error, so callers get a real failure
+      // instead of a silent empty message.
+      if (!out.content) out = await runCompletion({ model, parts, system });
     } catch (e) {
       return sendJSON(res, 502, { error: { message: String(e.message || e), type: "upstream_error" } });
     }
+    if (!out.content) {
+      return sendJSON(res, 502, {
+        error: {
+          message: `${model} completed but returned no content`,
+          type: "upstream_error",
+          code: "empty_response",
+        },
+      });
+    }
+    const usage = out.usage || {};
+    return sendJSON(res, 200, {
+      id,
+      object: "chat.completion",
+      created,
+      model,
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: "assistant",
+            content: out.content,
+            ...(out.reasoning ? { reasoning_content: out.reasoning } : {}),
+          },
+          finish_reason: "stop",
+        },
+      ],
+      usage: {
+        prompt_tokens: usage.input || 0,
+        completion_tokens: usage.output || 0,
+        total_tokens: (usage.input || 0) + (usage.output || 0),
+      },
+    });
   }
 
   // Streaming
@@ -805,6 +853,7 @@ async function handleChatCompletions(req, res) {
 
   let finished = false;
   let sentRole = false;
+  let sentContent = false;
 
   const sendChunk = (delta, finishReason) => {
     res.write(
@@ -845,7 +894,10 @@ async function handleChatCompletions(req, res) {
           sentRole = true;
         }
         if (kind === "reasoning") delta.reasoning_content = text;
-        else delta.content = text;
+        else {
+          delta.content = text;
+          sentContent = true;
+        }
         sendChunk(delta);
       },
       onError: (err) => {
@@ -859,7 +911,19 @@ async function handleChatCompletions(req, res) {
       onDone: () => {
         if (finished) return;
         finish();
-        sendChunk({}, "stop");
+        if (sentContent) {
+          sendChunk({}, "stop");
+        } else {
+          res.write(
+            `data: ${JSON.stringify({
+              error: {
+                message: `${model} completed but returned no content`,
+                type: "upstream_error",
+                code: "empty_response",
+              },
+            })}\n\n`,
+          );
+        }
         res.write("data: [DONE]\n\n");
         res.end();
       },
